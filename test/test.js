@@ -633,6 +633,143 @@ describe('S3rver Tests', function () {
       done();
     });
   });
+  it('should initiate a multipart upload', function (done) {
+    var params = {Bucket: buckets[0], Key: 'page/multiparted.html'};
+    s3Client.createMultipartUpload(params, function (err, data) {
+      if (err) {
+        return done(err);
+      }
+      should.exist(data.UploadId);
+      done();
+    });
+  });
+  it('should upload a multipart upload file with 1 part', function (done) {
+    var basicParams = {Bucket: buckets[1], Key: 'page/multiparted.html'};
+    var uploadId, partEtag = [];
+    async.series([
+      function createUpload(callback) {
+        s3Client.createMultipartUpload(basicParams, function (err, data) {
+          if (err) {
+            return callback(err);
+          }
+          should.exist(data.UploadId);
+          uploadId = data.UploadId;
+          callback();
+        });
+      },
+      function uploadParts(callback) {
+        s3Client.uploadPart({
+          Bucket: basicParams.Bucket,
+          Key: basicParams.Key,
+          PartNumber: 0,
+          UploadId: uploadId,
+          Body: 'Part 0\n'
+        }, function (err, data) {
+          if (err) {
+            return callback(err);
+          }
+          /[a-fA-F0-9]{32}/.test(data.ETag).should.equal(true);
+          partEtag[0] = data.ETag;
+          callback();
+        });
+      },
+      function completeParts(callback) {
+        s3Client.completeMultipartUpload({
+          Bucket: basicParams.Bucket,
+          Key: basicParams.Key,
+          UploadId: uploadId,
+          MultipartUpload: {
+            Parts: [
+              {
+                ETag: partEtag[0],
+                PartNumber: 0
+              }
+            ]
+          }
+        }, function (err, data) {
+          if (err) {
+            return callback(err);
+          }
+          should.exist(data.Location);
+          should.equal(data.Bucket, basicParams.Bucket);
+          should.equal(data.Key, basicParams.Key);
+          /[a-fA-F0-9]{32}/.test(data.ETag).should.equal(true);
+          callback();
+        });
+      }
+    ], function (err) {
+      done(err);
+    })
+  });
+  it('should upload a multipart upload file with 5 parts', function (done) {
+    var basicParams = {Bucket: buckets[2], Key: 'page/multiparted.html'};
+    var uploadId, partEtag = [], joinedBody = '';
+    async.series([
+      function createUpload(callback) {
+        s3Client.createMultipartUpload(basicParams, function (err, data) {
+          if (err) {
+            return callback(err);
+          }
+          should.exist(data.UploadId);
+          uploadId = data.UploadId;
+          callback();
+        });
+      },
+      function uploadParts(callback) {
+        async.eachSeries([0,1,2,3,4], function (index, innerCallback) {
+          var body = 'Part ' + index + '\n';
+          joinedBody += body;
+          s3Client.uploadPart({
+            Bucket: basicParams.Bucket,
+            Key: basicParams.Key,
+            PartNumber: index,
+            UploadId: uploadId,
+            Body: body
+          }, function (err, data) {
+            if (err) {
+              return innerCallback(err);
+            }
+            /[a-fA-F0-9]{32}/.test(data.ETag).should.equal(true);
+            data.ETag.should.equal('"' + md5(body) + '"');
+            partEtag[index] = data.ETag;
+            innerCallback();
+          });
+        }, function (err) {
+          callback(err);
+        });
+      },
+      function completeParts(callback) {
+        var parts = [];
+        var i;
+        for (i = 0; i < partEtag.length; i++) {
+          parts.push({
+            ETag: partEtag[i],
+            PartNumber: i
+          });
+        }
+        s3Client.completeMultipartUpload({
+          Bucket: basicParams.Bucket,
+          Key: basicParams.Key,
+          UploadId: uploadId,
+          MultipartUpload: {
+            Parts: parts
+          }
+        }, function (err, data) {
+          if (err) {
+            return callback(err);
+          }
+          should.exist(data.Location);
+          should.equal(data.Bucket, basicParams.Bucket);
+          should.equal(data.Key, basicParams.Key);
+          /[a-fA-F0-9]{32}/.test(data.ETag).should.equal(true);
+          data.ETag.should.equal('"' + md5(joinedBody) + '"');
+          callback();
+        });
+      }
+    ], function (err) {
+      done(err);
+    })
+  });
 });
 
 describe('S3rver Tests with Static Web Hosting', function () {
