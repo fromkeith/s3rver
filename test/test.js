@@ -187,6 +187,16 @@ describe('S3rver Tests', function () {
     });
   });
 
+  it('should return a text object with bucket in the key path', function (done) {
+    s3Client.getObject({Bucket: '', Key: buckets[0] + '/textmetadata'}, function (err, object) {
+      if (err) {
+        return done(err);
+      }
+      object.Metadata.somekey.should.equal('value');
+      done();
+    });
+  });
+
   it('should store an image in a bucket', function (done) {
     var file = path.join(__dirname, 'resources/image.jpg');
     fs.readFile(file, function (err, data) {
