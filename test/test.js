@@ -12,15 +12,18 @@ var md5 = require('md5');
 var S3rver = require('../lib');
 var util = require('util');
 var request = require('request');
+var xml2js = require('xml2js');
 
 describe('S3rver Tests', function () {
   var s3Client;
   var buckets = ['bucket1', 'bucket2', 'bucket3', 'bucket4', 'bucket5', 'bucket6'];
   var s3rver;
+  var SERVER_PORT = 4569;
+  var SERVER_HOST = 'localhost';
   before(function (done) {
     s3rver = new S3rver({
-      port: 4569,
-      hostname: 'localhost',
+      port: SERVER_PORT,
+      hostname: SERVER_HOST,
       silent: true,
       indexDocument: '',
       errorDocument: '',
@@ -769,6 +772,41 @@ describe('S3rver Tests', function () {
     ], function (err) {
       done(err);
     })
+  });
+  it('should store a text object using a POST form command', function (done) {
+    var params = {
+      Bucket: buckets[0], Key: 'textmetadata', Body: 'Hello!', Metadata: {
+        someKey: 'value'
+      }
+    };
+    request({
+      url: 'http://'+ SERVER_HOST + ':' + SERVER_PORT + '/' + buckets[0],
+      method: 'POST',
+      formData: {
+        key: 'form_uploaded.txt',
+        'Content-Type': 'text/plain',
+        AWSAccessKeyId: '123',
+        Policy: 'not-implemented',
+        Signature: 'not-implemented',
+        file: {
+          value: 'hello world',
+          options: {
+            filename: 'form_uploaded.txt',
+            contentType: 'text/plain'
+          }
+        }
+      }
+    }, function (err, resp, body) {
+      if (err) {
+        done(err);
+        return;
+      }
+      should.equal(resp.statusCode, 200);
+      /[a-fA-F0-9]{32}/.test(resp.headers.etag).should.equal(true);
+      resp.headers.etag.should.equal('"' + md5('hello world') + '"');
+      done();
+    });
+
   });
 });
 
